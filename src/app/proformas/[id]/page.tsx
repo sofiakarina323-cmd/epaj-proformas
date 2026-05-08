@@ -316,7 +316,7 @@ export default function ProformaPage({ params }: { params: Promise<{ id: string 
         style={{
           width: scale < 1 ? `${794 * scale}px` : '210mm',
           height: scale < 1 && sheet1H ? `${sheet1H * scale}px` : 'auto',
-          overflow: 'visible',
+          overflow: 'hidden',
         }}
       >
       <div
