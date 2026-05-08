@@ -34,21 +34,46 @@ export default function ProformaPage({ params }: { params: Promise<{ id: string 
   const [uploading, setUploading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [scale, setScale] = useState(1);
+  const [sheet1H, setSheet1H] = useState<number | null>(null);
+  const [sheet2H, setSheet2H] = useState<number | null>(null);
   const sheet1Ref = useRef<HTMLDivElement>(null);
   const sheet2Ref = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Escala la hoja A4 para que quepa en pantallas pequeñas
+  // Calcula escala para encajar la hoja A4 (210mm = 794px) en el viewport
   useEffect(() => {
     const update = () => {
       const vw = window.innerWidth;
-      const a4px = 794; // 210mm a 96dpi
-      setScale(vw < a4px + 32 ? (vw - 16) / a4px : 1);
+      const a4px = 794;
+      setScale(vw < a4px + 32 ? Math.max(0.3, (vw - 16) / a4px) : 1);
     };
     update();
     window.addEventListener('resize', update);
     return () => window.removeEventListener('resize', update);
   }, []);
+
+  // Mide la altura natural de cada hoja para reservar el espacio correcto
+  // cuando aplicamos transform: scale() (transform no afecta el layout).
+  useEffect(() => {
+    if (!data) return;
+    let cancelled = false;
+    const measure = () => {
+      if (cancelled) return;
+      if (sheet1Ref.current) setSheet1H(sheet1Ref.current.offsetHeight);
+      if (sheet2Ref.current) setSheet2H(sheet2Ref.current.offsetHeight);
+      else setSheet2H(null);
+    };
+    // Espera a que las imágenes carguen antes de medir
+    const t1 = setTimeout(measure, 50);
+    const t2 = setTimeout(measure, 400);
+    const t3 = setTimeout(measure, 1200);
+    window.addEventListener('resize', measure);
+    return () => {
+      cancelled = true;
+      clearTimeout(t1); clearTimeout(t2); clearTimeout(t3);
+      window.removeEventListener('resize', measure);
+    };
+  }, [data, proformaImages, showImagesPage, scale]);
 
   useEffect(() => {
     Promise.all([
@@ -113,12 +138,12 @@ export default function ProformaPage({ params }: { params: Promise<{ id: string 
       const zero = (el: HTMLElement) => {
         el.style.marginLeft = '0'; el.style.marginRight = '0';
         el.style.marginTop = '0'; el.style.marginBottom = '0';
-        el.style.zoom = '1'; // capturar siempre a tamaño completo
+        el.style.transform = 'none'; // capturar a tamaño completo
       };
       const restore = (el: HTMLElement) => {
         el.style.marginLeft = ''; el.style.marginRight = '';
         el.style.marginTop = ''; el.style.marginBottom = '';
-        el.style.zoom = ''; // React restaura el zoom de mobile en el siguiente render
+        el.style.transform = ''; // React vuelve a aplicar el scale en el siguiente render
       };
 
       const el1 = sheet1Ref.current;
@@ -287,9 +312,23 @@ export default function ProformaPage({ params }: { params: Promise<{ id: string 
 
       {/* ─── Hoja 1: Proforma ─── */}
       <div
+        className="mx-auto my-6 print:my-0"
+        style={{
+          width: scale < 1 ? `${794 * scale}px` : '210mm',
+          height: scale < 1 && sheet1H ? `${sheet1H * scale}px` : 'auto',
+          overflow: 'visible',
+        }}
+      >
+      <div
         ref={sheet1Ref}
-        className="bg-white mx-auto my-8 shadow-lg print:shadow-none print:my-0"
-        style={{ width: '210mm', minHeight: '297mm', padding: '18mm 18mm 14mm', ...(scale < 1 ? { zoom: scale } : {}) }}>
+        className="bg-white shadow-lg print:shadow-none"
+        style={{
+          width: '210mm',
+          minHeight: '297mm',
+          padding: '18mm 18mm 14mm',
+          transformOrigin: 'top left',
+          transform: scale < 1 ? `scale(${scale})` : 'none',
+        }}>
 
         <div className="flex justify-between items-start mb-5">
           <div className="flex items-start gap-4">
@@ -408,6 +447,7 @@ export default function ProformaPage({ params }: { params: Promise<{ id: string 
           )}
         </div>
       </div>
+      </div>
 
       {/* ─── Panel gestión de imágenes (no-print) ─── */}
       {showImagesPage && (
@@ -489,9 +529,23 @@ export default function ProformaPage({ params }: { params: Promise<{ id: string 
       {/* ─── Hoja 2: Galería de imágenes ─── */}
       {showImagesPage && proformaImages.length > 0 && (
         <div
+          className="mx-auto my-6 print:my-0 print-page-break"
+          style={{
+            width: scale < 1 ? `${794 * scale}px` : '210mm',
+            height: scale < 1 && sheet2H ? `${sheet2H * scale}px` : 'auto',
+            overflow: 'visible',
+          }}
+        >
+        <div
           ref={sheet2Ref}
-          className="bg-white mx-auto my-8 shadow-lg print:shadow-none print:my-0 print-page-break"
-          style={{ width: '210mm', minHeight: '297mm', padding: '18mm 18mm 14mm', ...(scale < 1 ? { zoom: scale } : {}) }}
+          className="bg-white shadow-lg print:shadow-none"
+          style={{
+            width: '210mm',
+            minHeight: '297mm',
+            padding: '18mm 18mm 14mm',
+            transformOrigin: 'top left',
+            transform: scale < 1 ? `scale(${scale})` : 'none',
+          }}
         >
           {/* Mismo header que hoja 1 */}
           <div className="flex justify-between items-start mb-5">
@@ -541,6 +595,7 @@ export default function ProformaPage({ params }: { params: Promise<{ id: string 
             ))}
           </div>
         </div>
+        </div>
       )}
 
       <style>{`
@@ -548,7 +603,7 @@ export default function ProformaPage({ params }: { params: Promise<{ id: string 
           .no-print { display: none !important; }
           body { background: white !important; margin: 0; }
           * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-          div[style*="210mm"] { margin: 0 !important; box-shadow: none !important; width: 100% !important; min-height: auto !important; }
+          div[style*="210mm"] { margin: 0 !important; box-shadow: none !important; width: 100% !important; min-height: auto !important; transform: none !important; height: auto !important; }
           .print-page-break { page-break-before: always !important; break-before: page !important; }
         }
         @page { margin: 0; size: A4; }
