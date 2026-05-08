@@ -52,28 +52,18 @@ export default function ProformaPage({ params }: { params: Promise<{ id: string 
     return () => window.removeEventListener('resize', update);
   }, []);
 
-  // Mide la altura natural de cada hoja para reservar el espacio correcto
-  // cuando aplicamos transform: scale() (transform no afecta el layout).
+  // Mide la altura real de cada hoja con ResizeObserver — se actualiza
+  // automáticamente cuando el contenido cambia o cargan las imágenes.
   useEffect(() => {
     if (!data) return;
-    let cancelled = false;
-    const measure = () => {
-      if (cancelled) return;
+    const observer = new ResizeObserver(() => {
       if (sheet1Ref.current) setSheet1H(sheet1Ref.current.offsetHeight);
       if (sheet2Ref.current) setSheet2H(sheet2Ref.current.offsetHeight);
-      else setSheet2H(null);
-    };
-    // Espera a que las imágenes carguen antes de medir
-    const t1 = setTimeout(measure, 50);
-    const t2 = setTimeout(measure, 400);
-    const t3 = setTimeout(measure, 1200);
-    window.addEventListener('resize', measure);
-    return () => {
-      cancelled = true;
-      clearTimeout(t1); clearTimeout(t2); clearTimeout(t3);
-      window.removeEventListener('resize', measure);
-    };
-  }, [data, proformaImages, showImagesPage, scale]);
+    });
+    if (sheet1Ref.current) observer.observe(sheet1Ref.current);
+    if (sheet2Ref.current) observer.observe(sheet2Ref.current);
+    return () => observer.disconnect();
+  }, [data, proformaImages, showImagesPage]);
 
   useEffect(() => {
     Promise.all([
@@ -139,11 +129,13 @@ export default function ProformaPage({ params }: { params: Promise<{ id: string 
         el.style.marginLeft = '0'; el.style.marginRight = '0';
         el.style.marginTop = '0'; el.style.marginBottom = '0';
         el.style.transform = 'none'; // capturar a tamaño completo
+        el.style.minHeight = '297mm'; // forzar tamaño A4 al exportar
       };
       const restore = (el: HTMLElement) => {
         el.style.marginLeft = ''; el.style.marginRight = '';
         el.style.marginTop = ''; el.style.marginBottom = '';
-        el.style.transform = ''; // React vuelve a aplicar el scale en el siguiente render
+        el.style.transform = '';
+        el.style.minHeight = ''; // React restaura el minHeight responsivo
       };
 
       const el1 = sheet1Ref.current;
@@ -324,7 +316,7 @@ export default function ProformaPage({ params }: { params: Promise<{ id: string 
         className="bg-white shadow-lg print:shadow-none"
         style={{
           width: '210mm',
-          minHeight: '297mm',
+          minHeight: scale < 1 ? 'auto' : '297mm',
           padding: '18mm 18mm 14mm',
           transformOrigin: 'top left',
           transform: scale < 1 ? `scale(${scale})` : 'none',
@@ -541,7 +533,7 @@ export default function ProformaPage({ params }: { params: Promise<{ id: string 
           className="bg-white shadow-lg print:shadow-none"
           style={{
             width: '210mm',
-            minHeight: '297mm',
+            minHeight: scale < 1 ? 'auto' : '297mm',
             padding: '18mm 18mm 14mm',
             transformOrigin: 'top left',
             transform: scale < 1 ? `scale(${scale})` : 'none',
