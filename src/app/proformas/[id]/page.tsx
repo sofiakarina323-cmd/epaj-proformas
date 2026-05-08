@@ -33,9 +33,22 @@ export default function ProformaPage({ params }: { params: Promise<{ id: string 
   const [proformaImages, setProformaImages] = useState<ProformaImage[]>([]);
   const [uploading, setUploading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [scale, setScale] = useState(1);
   const sheet1Ref = useRef<HTMLDivElement>(null);
   const sheet2Ref = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Escala la hoja A4 para que quepa en pantallas pequeñas
+  useEffect(() => {
+    const update = () => {
+      const vw = window.innerWidth;
+      const a4px = 794; // 210mm a 96dpi
+      setScale(vw < a4px + 32 ? (vw - 16) / a4px : 1);
+    };
+    update();
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, []);
 
   useEffect(() => {
     Promise.all([
@@ -100,10 +113,12 @@ export default function ProformaPage({ params }: { params: Promise<{ id: string 
       const zero = (el: HTMLElement) => {
         el.style.marginLeft = '0'; el.style.marginRight = '0';
         el.style.marginTop = '0'; el.style.marginBottom = '0';
+        el.style.zoom = '1'; // capturar siempre a tamaño completo
       };
       const restore = (el: HTMLElement) => {
         el.style.marginLeft = ''; el.style.marginRight = '';
         el.style.marginTop = ''; el.style.marginBottom = '';
+        el.style.zoom = ''; // React restaura el zoom de mobile en el siguiente render
       };
 
       const el1 = sheet1Ref.current;
@@ -274,7 +289,7 @@ export default function ProformaPage({ params }: { params: Promise<{ id: string 
       <div
         ref={sheet1Ref}
         className="bg-white mx-auto my-8 shadow-lg print:shadow-none print:my-0"
-        style={{ width: '210mm', minHeight: '297mm', padding: '18mm 18mm 14mm' }}>
+        style={{ width: '210mm', minHeight: '297mm', padding: '18mm 18mm 14mm', ...(scale < 1 ? { zoom: scale } : {}) }}>
 
         <div className="flex justify-between items-start mb-5">
           <div className="flex items-start gap-4">
@@ -397,7 +412,7 @@ export default function ProformaPage({ params }: { params: Promise<{ id: string 
       {/* ─── Panel gestión de imágenes (no-print) ─── */}
       {showImagesPage && (
         <div className="no-print mx-auto mb-6 bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden"
-          style={{ width: '210mm', maxWidth: 'calc(100vw - 2rem)' }}>
+          style={{ width: '210mm', maxWidth: 'calc(100vw - 1rem)' }}>
           <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Images size={16} className="text-teal-500" />
@@ -476,7 +491,7 @@ export default function ProformaPage({ params }: { params: Promise<{ id: string 
         <div
           ref={sheet2Ref}
           className="bg-white mx-auto my-8 shadow-lg print:shadow-none print:my-0 print-page-break"
-          style={{ width: '210mm', minHeight: '297mm', padding: '18mm 18mm 14mm' }}
+          style={{ width: '210mm', minHeight: '297mm', padding: '18mm 18mm 14mm', ...(scale < 1 ? { zoom: scale } : {}) }}
         >
           {/* Mismo header que hoja 1 */}
           <div className="flex justify-between items-start mb-5">
