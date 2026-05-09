@@ -34,25 +34,21 @@ export default function ProformaPage({ params }: { params: Promise<{ id: string 
   const [uploading, setUploading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
 
-  // CSS zoom cambia el layout box (a diferencia de transform:scale que NO lo hace).
-  // Con zoom no se necesita wrapper div, ni ResizeObserver, ni cálculos de altura.
-  // El elemento ocupa 794*zoom px en el flujo del documento — mx-auto lo centra solo.
-  const [zoom, setZoom] = useState(1);
-
   const sheet1Ref = useRef<HTMLDivElement>(null);
   const sheet2Ref = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // ✅ MECANISMO NATIVO DEL NAVEGADOR: sobrescribimos el viewport meta tag
+  // para que esta página se renderice como si midiera 820px. El navegador móvil
+  // escala automáticamente todo el contenido para que quepa en pantalla.
+  // Es la técnica estándar para mostrar layouts fijos en móvil — funciona
+  // en TODOS los navegadores móviles (Chrome, Safari, Firefox, Samsung, etc).
   useEffect(() => {
-    const update = () => {
-      const vw = window.innerWidth;
-      const a4px = 794;
-      const padding = 16; // 8px cada lado
-      setZoom(vw >= a4px + padding * 2 ? 1 : Math.max(0.3, (vw - padding * 2) / a4px));
-    };
-    update();
-    window.addEventListener('resize', update);
-    return () => window.removeEventListener('resize', update);
+    const meta = document.querySelector('meta[name="viewport"]') as HTMLMetaElement | null;
+    if (!meta) return;
+    const original = meta.getAttribute('content') ?? 'width=device-width, initial-scale=1';
+    meta.setAttribute('content', 'width=820, initial-scale=1, user-scalable=yes');
+    return () => { meta.setAttribute('content', original); };
   }, []);
 
   useEffect(() => {
@@ -115,14 +111,12 @@ export default function ProformaPage({ params }: { params: Promise<{ id: string 
     try {
       const { toCanvas } = await import('html-to-image');
 
-      // Resetea zoom a 1 para capturar a tamaño completo A4
+      // Asegura tamaño A4 completo al capturar
       const zero = (el: HTMLElement) => {
-        el.style.zoom = '1';
         el.style.minHeight = '297mm';
         el.style.margin = '0';
       };
       const restore = (el: HTMLElement) => {
-        el.style.zoom = zoom < 1 ? String(zoom) : '';
         el.style.minHeight = '';
         el.style.margin = '';
       };
@@ -209,13 +203,12 @@ export default function ProformaPage({ params }: { params: Promise<{ id: string 
   const subtotal = data.items.reduce((s, it) => s + it.cantidad * it.precio_unitario, 0);
   const total = subtotal - (data.descuento || 0);
 
-  // Estilo base de cada hoja A4.
-  // zoom encoge el layout box completo → no hace falta wrapper ni ResizeObserver.
+  // Estilo base de cada hoja A4. No necesita escalado JS:
+  // el viewport meta=820 hace que el navegador móvil escale toda la página.
   const sheetStyle: React.CSSProperties = {
     width: '794px',
     minHeight: '1123px',
     padding: '18mm 18mm 14mm',
-    zoom: zoom < 1 ? zoom : undefined,
   };
 
   return (
@@ -427,7 +420,7 @@ export default function ProformaPage({ params }: { params: Promise<{ id: string 
       {/* ─── Panel gestión de imágenes (no-print) ─── */}
       {showImagesPage && (
         <div className="no-print mx-auto mb-6 bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden"
-          style={{ width: '794px', maxWidth: 'calc(100vw - 1rem)', zoom: zoom < 1 ? zoom : undefined }}>
+          style={{ width: '794px' }}>
           <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Images size={16} className="text-teal-500" />
@@ -564,7 +557,6 @@ export default function ProformaPage({ params }: { params: Promise<{ id: string 
           body { background: white !important; margin: 0; }
           * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
           .a4-sheet {
-            zoom: 1 !important;
             width: 210mm !important;
             min-height: 297mm !important;
             margin: 0 !important;
