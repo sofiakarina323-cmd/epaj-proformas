@@ -33,37 +33,27 @@ export default function ProformaPage({ params }: { params: Promise<{ id: string 
   const [proformaImages, setProformaImages] = useState<ProformaImage[]>([]);
   const [uploading, setUploading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
-  const [scale, setScale] = useState(1);
-  const [sheet1H, setSheet1H] = useState<number | null>(null);
-  const [sheet2H, setSheet2H] = useState<number | null>(null);
+
+  // CSS zoom cambia el layout box (a diferencia de transform:scale que NO lo hace).
+  // Con zoom no se necesita wrapper div, ni ResizeObserver, ni cálculos de altura.
+  // El elemento ocupa 794*zoom px en el flujo del documento — mx-auto lo centra solo.
+  const [zoom, setZoom] = useState(1);
+
   const sheet1Ref = useRef<HTMLDivElement>(null);
   const sheet2Ref = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Calcula escala para encajar la hoja A4 (210mm = 794px) en el viewport
   useEffect(() => {
     const update = () => {
       const vw = window.innerWidth;
       const a4px = 794;
-      setScale(vw < a4px + 32 ? Math.max(0.3, (vw - 16) / a4px) : 1);
+      const padding = 16; // 8px cada lado
+      setZoom(vw >= a4px + padding * 2 ? 1 : Math.max(0.3, (vw - padding * 2) / a4px));
     };
     update();
     window.addEventListener('resize', update);
     return () => window.removeEventListener('resize', update);
   }, []);
-
-  // Mide la altura real de cada hoja con ResizeObserver — se actualiza
-  // automáticamente cuando el contenido cambia o cargan las imágenes.
-  useEffect(() => {
-    if (!data) return;
-    const observer = new ResizeObserver(() => {
-      if (sheet1Ref.current) setSheet1H(sheet1Ref.current.offsetHeight);
-      if (sheet2Ref.current) setSheet2H(sheet2Ref.current.offsetHeight);
-    });
-    if (sheet1Ref.current) observer.observe(sheet1Ref.current);
-    if (sheet2Ref.current) observer.observe(sheet2Ref.current);
-    return () => observer.disconnect();
-  }, [data, proformaImages, showImagesPage]);
 
   useEffect(() => {
     Promise.all([
@@ -125,17 +115,16 @@ export default function ProformaPage({ params }: { params: Promise<{ id: string 
     try {
       const { toCanvas } = await import('html-to-image');
 
+      // Resetea zoom a 1 para capturar a tamaño completo A4
       const zero = (el: HTMLElement) => {
-        el.style.marginLeft = '0'; el.style.marginRight = '0';
-        el.style.marginTop = '0'; el.style.marginBottom = '0';
-        el.style.transform = 'none'; // capturar a tamaño completo
-        el.style.minHeight = '297mm'; // forzar tamaño A4 al exportar
+        el.style.zoom = '1';
+        el.style.minHeight = '297mm';
+        el.style.margin = '0';
       };
       const restore = (el: HTMLElement) => {
-        el.style.marginLeft = ''; el.style.marginRight = '';
-        el.style.marginTop = ''; el.style.marginBottom = '';
-        el.style.transform = '';
-        el.style.minHeight = ''; // React restaura el minHeight responsivo
+        el.style.zoom = zoom < 1 ? String(zoom) : '';
+        el.style.minHeight = '';
+        el.style.margin = '';
       };
 
       const el1 = sheet1Ref.current;
@@ -220,8 +209,17 @@ export default function ProformaPage({ params }: { params: Promise<{ id: string 
   const subtotal = data.items.reduce((s, it) => s + it.cantidad * it.precio_unitario, 0);
   const total = subtotal - (data.descuento || 0);
 
+  // Estilo base de cada hoja A4.
+  // zoom encoge el layout box completo → no hace falta wrapper ni ResizeObserver.
+  const sheetStyle: React.CSSProperties = {
+    width: '794px',
+    minHeight: '1123px',
+    padding: '18mm 18mm 14mm',
+    zoom: zoom < 1 ? zoom : undefined,
+  };
+
   return (
-    <div>
+    <div className="pb-10">
       {/* Toolbar */}
       <div className="no-print flex items-center justify-between px-4 sm:px-8 py-3 bg-white border-b shadow-sm sticky top-0 z-20 gap-3">
         <button onClick={() => router.push('/proformas')} className="flex items-center gap-2 text-slate-500 hover:text-slate-800 text-sm transition-colors shrink-0">
@@ -304,24 +302,10 @@ export default function ProformaPage({ params }: { params: Promise<{ id: string 
 
       {/* ─── Hoja 1: Proforma ─── */}
       <div
-        className="mx-auto my-6 print:my-0"
-        style={{
-          width: scale < 1 ? `${794 * scale}px` : '210mm',
-          height: scale < 1 && sheet1H ? `${sheet1H * scale}px` : 'auto',
-          overflow: 'hidden',
-        }}
-      >
-      <div
         ref={sheet1Ref}
-        className="bg-white shadow-lg print:shadow-none"
-        style={{
-          width: '210mm',
-          minHeight: scale < 1 ? 'auto' : '297mm',
-          padding: '18mm 18mm 14mm',
-          transformOrigin: 'top left',
-          transform: scale < 1 ? `scale(${scale})` : 'none',
-        }}>
-
+        className="a4-sheet bg-white shadow-lg print:shadow-none mx-auto my-6 print:my-0"
+        style={sheetStyle}
+      >
         <div className="flex justify-between items-start mb-5">
           <div className="flex items-start gap-4">
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -439,12 +423,11 @@ export default function ProformaPage({ params }: { params: Promise<{ id: string 
           )}
         </div>
       </div>
-      </div>
 
       {/* ─── Panel gestión de imágenes (no-print) ─── */}
       {showImagesPage && (
         <div className="no-print mx-auto mb-6 bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden"
-          style={{ width: '210mm', maxWidth: 'calc(100vw - 1rem)' }}>
+          style={{ width: '794px', maxWidth: 'calc(100vw - 1rem)', zoom: zoom < 1 ? zoom : undefined }}>
           <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Images size={16} className="text-teal-500" />
@@ -521,23 +504,9 @@ export default function ProformaPage({ params }: { params: Promise<{ id: string 
       {/* ─── Hoja 2: Galería de imágenes ─── */}
       {showImagesPage && proformaImages.length > 0 && (
         <div
-          className="mx-auto my-6 print:my-0 print-page-break"
-          style={{
-            width: scale < 1 ? `${794 * scale}px` : '210mm',
-            height: scale < 1 && sheet2H ? `${sheet2H * scale}px` : 'auto',
-            overflow: 'visible',
-          }}
-        >
-        <div
           ref={sheet2Ref}
-          className="bg-white shadow-lg print:shadow-none"
-          style={{
-            width: '210mm',
-            minHeight: scale < 1 ? 'auto' : '297mm',
-            padding: '18mm 18mm 14mm',
-            transformOrigin: 'top left',
-            transform: scale < 1 ? `scale(${scale})` : 'none',
-          }}
+          className="a4-sheet bg-white shadow-lg print:shadow-none mx-auto my-6 print:my-0 print-page-break"
+          style={sheetStyle}
         >
           {/* Mismo header que hoja 1 */}
           <div className="flex justify-between items-start mb-5">
@@ -587,7 +556,6 @@ export default function ProformaPage({ params }: { params: Promise<{ id: string 
             ))}
           </div>
         </div>
-        </div>
       )}
 
       <style>{`
@@ -595,7 +563,13 @@ export default function ProformaPage({ params }: { params: Promise<{ id: string 
           .no-print { display: none !important; }
           body { background: white !important; margin: 0; }
           * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-          div[style*="210mm"] { margin: 0 !important; box-shadow: none !important; width: 100% !important; min-height: auto !important; transform: none !important; height: auto !important; }
+          .a4-sheet {
+            zoom: 1 !important;
+            width: 210mm !important;
+            min-height: 297mm !important;
+            margin: 0 !important;
+            box-shadow: none !important;
+          }
           .print-page-break { page-break-before: always !important; break-before: page !important; }
         }
         @page { margin: 0; size: A4; }
