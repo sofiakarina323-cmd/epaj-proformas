@@ -97,27 +97,28 @@ export default function ProformaClient({ id }: { id: string }) {
     try {
       const { toCanvas } = await import('html-to-image');
 
-      // Asegura tamaño A4 completo al capturar
-      const zero = (el: HTMLElement) => {
-        el.style.minHeight = '297mm';
-        el.style.margin = '0';
+      // Las hojas A4 ya viven fuera de pantalla en su tamaño real (794px);
+      // sólo activamos su visibilidad en flujo para que html-to-image las capture.
+      const onScreen = (el: HTMLElement) => {
+        el.style.position = 'static';
+        el.style.left = '0';
       };
-      const restore = (el: HTMLElement) => {
-        el.style.minHeight = '';
-        el.style.margin = '';
+      const offScreen = (el: HTMLElement) => {
+        el.style.position = '';
+        el.style.left = '';
       };
 
       const el1 = sheet1Ref.current;
-      zero(el1);
+      onScreen(el1);
       const canvas1 = await toCanvas(el1, { pixelRatio: 2, backgroundColor: '#ffffff' });
-      restore(el1);
+      offScreen(el1);
 
       let canvas2: HTMLCanvasElement | null = null;
       if (showImagesPage && proformaImages.length > 0 && sheet2Ref.current) {
         const el2 = sheet2Ref.current;
-        zero(el2);
+        onScreen(el2);
         canvas2 = await toCanvas(el2, { pixelRatio: 2, backgroundColor: '#ffffff' });
-        restore(el2);
+        offScreen(el2);
       }
 
       if (format === 'png') {
@@ -147,7 +148,6 @@ export default function ProformaClient({ id }: { id: string }) {
         const pageW = pdf.internal.pageSize.getWidth();
         const pageH = pdf.internal.pageSize.getHeight();
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const addToPdf = (canvas: HTMLCanvasElement, newPage: boolean) => {
           const ratio = pageW / canvas.width;
           const totalH = canvas.height * ratio;
@@ -189,9 +189,11 @@ export default function ProformaClient({ id }: { id: string }) {
   const subtotal = data.items.reduce((s, it) => s + it.cantidad * it.precio_unitario, 0);
   const total = subtotal - (data.descuento || 0);
 
-  // Estilo base de cada hoja A4. No necesita escalado JS:
-  // el viewport meta=820 hace que el navegador móvil escale toda la página.
-  const sheetStyle: React.CSSProperties = {
+  // Estilo de las hojas A4 (ocultas fuera de pantalla en el viewport, normales en print)
+  const a4OffScreenStyle: React.CSSProperties = {
+    position: 'absolute',
+    left: '-99999px',
+    top: 0,
     width: '794px',
     minHeight: '1123px',
     padding: '18mm 18mm 14mm',
@@ -199,8 +201,8 @@ export default function ProformaClient({ id }: { id: string }) {
 
   return (
     <div className="pb-10">
-      {/* Toolbar */}
-      <div className="no-print flex items-center justify-between px-4 sm:px-8 py-3 bg-white border-b shadow-sm sticky top-0 z-20 gap-3">
+      {/* ─── Toolbar ─── */}
+      <div className="screen-only flex items-center justify-between px-3 sm:px-8 py-3 bg-white border-b shadow-sm sticky top-0 z-20 gap-2">
         <button onClick={() => router.push('/proformas')} className="flex items-center gap-2 text-slate-500 hover:text-slate-800 text-sm transition-colors shrink-0">
           <ArrowLeft size={16} /> <span className="hidden sm:inline">Volver</span>
         </button>
@@ -211,7 +213,6 @@ export default function ProformaClient({ id }: { id: string }) {
             {data.estado}
           </span>
 
-          {/* Toggle segunda hoja */}
           <button
             onClick={() => setShowImagesPage(o => !o)}
             title={showImagesPage ? 'Ocultar segunda hoja' : 'Agregar segunda hoja con imágenes'}
@@ -230,7 +231,6 @@ export default function ProformaClient({ id }: { id: string }) {
             <Pencil size={14} /> <span className="hidden sm:inline">Editar</span>
           </Link>
 
-          {/* Menú exportar */}
           <div className="relative" onClick={e => e.stopPropagation()}>
             <button
               onClick={() => setDropOpen(o => !o)}
@@ -246,7 +246,6 @@ export default function ProformaClient({ id }: { id: string }) {
             {dropOpen && (
               <div className="absolute right-0 top-full mt-1.5 bg-white border border-slate-200 rounded-xl shadow-xl py-1.5 w-52 z-50">
                 <div className="px-3 py-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-widest">Exportar como</div>
-
                 <button onClick={() => { setDropOpen(false); window.print(); }}
                   className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors">
                   <div className="p-1.5 rounded-lg bg-indigo-50 shrink-0"><Printer size={14} className="text-indigo-500" /></div>
@@ -255,7 +254,6 @@ export default function ProformaClient({ id }: { id: string }) {
                     <div className="text-xs text-slate-400">Diálogo del sistema</div>
                   </div>
                 </button>
-
                 <button onClick={() => handleDownload('pdf')}
                   className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors">
                   <div className="p-1.5 rounded-lg bg-red-50 shrink-0"><FileText size={14} className="text-red-500" /></div>
@@ -264,7 +262,6 @@ export default function ProformaClient({ id }: { id: string }) {
                     <div className="text-xs text-slate-400">{showImagesPage && proformaImages.length > 0 ? '2 páginas con imágenes' : 'Descarga directa'}</div>
                   </div>
                 </button>
-
                 <button onClick={() => handleDownload('png')}
                   className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors">
                   <div className="p-1.5 rounded-lg bg-blue-50 shrink-0"><FileImage size={14} className="text-blue-500" /></div>
@@ -279,11 +276,221 @@ export default function ProformaClient({ id }: { id: string }) {
         </div>
       </div>
 
-      {/* ─── Hoja 1: Proforma ─── */}
+      {/* ╔═══════════════════════════════════════════════════════════════╗
+          ║  VISTA RESPONSIVE — visible en pantalla, oculta en print     ║
+          ╚═══════════════════════════════════════════════════════════════╝ */}
+      <div className="screen-only max-w-3xl mx-auto p-3 sm:p-6">
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+          {/* Header */}
+          <div className="p-5 sm:p-7 border-b border-slate-100">
+            <div className="flex items-start gap-4 mb-4">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/logo-light.png" alt="EPAJ" width={56} height={56} className="shrink-0" />
+              <div className="min-w-0">
+                <div className="text-base sm:text-lg font-bold text-slate-900 leading-tight break-words">
+                  {config.empresa_nombre}
+                </div>
+                <div className="text-xs sm:text-sm text-slate-500 mt-1 leading-relaxed break-words">
+                  {config.empresa_direccion}<br />
+                  RUC: {config.empresa_ruc} · Tel {config.empresa_telefono}
+                </div>
+              </div>
+            </div>
+            <div className="h-1 rounded-full" style={{ background: 'linear-gradient(90deg, #7c6fa0, #3b82f6, #14b8a6)' }} />
+          </div>
+
+          {/* Título y número */}
+          <div className="px-5 sm:px-7 py-5 bg-gradient-to-br from-slate-50 to-white">
+            <div className="text-[11px] text-slate-400 uppercase tracking-widest mb-1">Presupuesto de venta</div>
+            <div className="text-2xl sm:text-3xl font-bold tracking-tight" style={{ color: '#0d9488' }}>{data.numero}</div>
+            <div className="mt-1 inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-semibold"
+              style={{ background: data.estado === 'final' ? '#dcfce7' : '#fef3c7', color: data.estado === 'final' ? '#15803d' : '#92400e' }}>
+              {data.estado}
+            </div>
+          </div>
+
+          {/* Cliente */}
+          <div className="px-5 sm:px-7 py-5 border-t border-slate-100">
+            <div className="text-[11px] text-slate-400 uppercase tracking-widest mb-3">Cliente</div>
+            <div className="text-base font-semibold text-slate-800 mb-2 break-words">{data.cliente_nombre}</div>
+            <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-sm">
+              {data.cliente_codigo && (<><dt className="text-slate-400">Código</dt><dd className="text-slate-700 -mt-2 sm:mt-0">{data.cliente_codigo}</dd></>)}
+              {data.cliente_ruc && (<><dt className="text-slate-400">RUC</dt><dd className="text-slate-700 -mt-2 sm:mt-0">{data.cliente_ruc}</dd></>)}
+              {data.cliente_telefono && (<><dt className="text-slate-400">Teléfono</dt><dd className="text-slate-700 -mt-2 sm:mt-0">{data.cliente_telefono}</dd></>)}
+              {data.cliente_direccion && (<><dt className="text-slate-400">Dirección</dt><dd className="text-slate-700 -mt-2 sm:mt-0 break-words">{data.cliente_direccion}</dd></>)}
+            </dl>
+          </div>
+
+          {/* Datos */}
+          <div className="px-5 sm:px-7 py-5 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
+            <div>
+              <div className="text-[11px] text-slate-400 uppercase tracking-widest mb-0.5">Fecha</div>
+              <div className="font-semibold text-slate-700">{fmtDate(data.fecha)}</div>
+            </div>
+            <div>
+              <div className="text-[11px] text-slate-400 uppercase tracking-widest mb-0.5">Comercial</div>
+              <div className="font-semibold text-slate-700">{data.comercial || '—'}</div>
+            </div>
+            <div>
+              <div className="text-[11px] text-slate-400 uppercase tracking-widest mb-0.5">Válido hasta</div>
+              <div className="font-semibold text-slate-700">{fmtDate(data.valido_hasta)}</div>
+            </div>
+          </div>
+
+          {/* Items */}
+          <div className="border-t border-slate-100">
+            <div className="px-5 sm:px-7 py-4 bg-slate-50 flex items-center justify-between">
+              <div className="text-[11px] text-slate-500 uppercase tracking-widest font-semibold">Detalle</div>
+              <div className="text-xs text-slate-400">{data.items.length} item{data.items.length !== 1 ? 's' : ''}</div>
+            </div>
+            <ul className="divide-y divide-slate-100">
+              {data.items.map(it => (
+                <li key={it.id} className="px-5 sm:px-7 py-4">
+                  <div className="flex items-start justify-between gap-3 mb-1.5">
+                    <div className="min-w-0 flex-1">
+                      <div className="font-bold text-xs tracking-wide" style={{ color: '#0d9488' }}>{it.codigo_articulo}</div>
+                      <div className="text-sm text-slate-700 mt-1 leading-relaxed whitespace-pre-wrap break-words">{it.descripcion}</div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <div className="text-base font-bold text-slate-800">$ {fmt(it.cantidad * it.precio_unitario)}</div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 text-xs text-slate-400">
+                    <span>{it.cantidad} ud.</span>
+                    <span>×</span>
+                    <span>$ {fmt(it.precio_unitario)} c/u</span>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {/* Totales */}
+          <div className="px-5 sm:px-7 py-5 border-t border-slate-100 bg-gradient-to-br from-slate-50 to-white space-y-2">
+            <div className="flex justify-between text-sm text-slate-500">
+              <span>Total mercancía</span>
+              <span className="font-medium text-slate-700">$ {fmt(subtotal)}</span>
+            </div>
+            <div className="flex justify-between text-sm text-slate-500">
+              <span>Descuento</span>
+              <span className="font-medium text-slate-700">$ {fmt(data.descuento || 0)}</span>
+            </div>
+            <div className="flex justify-between items-center pt-2 mt-2 border-t border-slate-200">
+              <span className="text-sm font-bold text-slate-800">Importe Final</span>
+              <span className="text-2xl font-bold" style={{ color: '#0d9488' }}>$ {fmt(total)}</span>
+            </div>
+          </div>
+
+          {/* Términos */}
+          <div className="px-5 sm:px-7 py-5 border-t border-slate-100 space-y-3 text-sm">
+            {data.forma_pago && (
+              <div>
+                <div className="text-[11px] text-slate-400 uppercase tracking-widest mb-0.5">Forma de pago</div>
+                <div className="text-slate-700 leading-relaxed break-words">{data.forma_pago}</div>
+              </div>
+            )}
+            <div>
+              <div className="text-[11px] text-slate-400 uppercase tracking-widest mb-0.5">Tiempo de entrega</div>
+              <div className="font-bold text-slate-800 uppercase tracking-wide">{data.tiempo_entrega}</div>
+            </div>
+            <div>
+              <div className="text-[11px] text-slate-400 uppercase tracking-widest mb-0.5">Garantía</div>
+              <div className="text-slate-700">{data.garantia}</div>
+            </div>
+            {config.datos_bancarios && (
+              <div>
+                <div className="text-[11px] text-slate-400 uppercase tracking-widest mb-0.5">Datos bancarios</div>
+                <div className="text-slate-700 whitespace-pre-wrap break-words text-xs leading-relaxed">{config.datos_bancarios}</div>
+              </div>
+            )}
+            <div>
+              <div className="text-[11px] text-slate-400 uppercase tracking-widest mb-0.5">Validez de la proforma</div>
+              <div className="text-slate-700">{config.validez_proforma_default || '1 mes'}</div>
+            </div>
+            {data.nota && (
+              <div>
+                <div className="text-[11px] text-slate-400 uppercase tracking-widest mb-0.5">Nota</div>
+                <div className="text-slate-700 break-words">{data.nota}</div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Panel de gestión de imágenes (responsive, sin width fijo) */}
+        {showImagesPage && (
+          <div className="mt-4 bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+            <div className="px-5 sm:px-7 py-4 border-b border-slate-100 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Images size={16} className="text-teal-500" />
+                <span className="text-sm font-semibold text-slate-700">Galería de imágenes</span>
+              </div>
+              <span className="text-xs text-slate-400">{proformaImages.length} imagen{proformaImages.length !== 1 ? 'es' : ''}</span>
+            </div>
+            <div className="p-5 sm:p-6">
+              <div
+                onClick={() => fileInputRef.current?.click()}
+                onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
+                onDragLeave={() => setIsDragging(false)}
+                onDrop={e => { e.preventDefault(); setIsDragging(false); handleFileUpload(e.dataTransfer.files); }}
+                className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-all ${
+                  isDragging ? 'border-teal-400 bg-teal-50' : 'border-slate-200 hover:border-teal-300 hover:bg-slate-50'
+                }`}
+              >
+                {uploading ? (
+                  <div className="flex items-center justify-center gap-2 text-teal-600">
+                    <Loader2 size={18} className="animate-spin" />
+                    <span className="text-sm">Subiendo imágenes…</span>
+                  </div>
+                ) : (
+                  <>
+                    <Upload size={20} className="mx-auto text-slate-400 mb-2" />
+                    <p className="text-sm text-slate-500">Arrastra imágenes aquí o <span className="text-teal-600 font-medium">haz clic para seleccionar</span></p>
+                    <p className="text-xs text-slate-400 mt-1">PNG, JPG, JPEG, WEBP — puedes seleccionar varias</p>
+                  </>
+                )}
+                <input ref={fileInputRef} type="file" multiple accept="image/png,image/jpeg,image/webp" className="hidden"
+                  onChange={e => e.target.files && handleFileUpload(e.target.files)} />
+              </div>
+
+              {proformaImages.length > 0 && (
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mt-5">
+                  {proformaImages.map(img => (
+                    <div key={img.id} className="group relative">
+                      <div className="relative rounded-xl overflow-hidden bg-slate-100 aspect-video">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={img.url_path} alt={img.caption || ''} className="w-full h-full object-cover" />
+                        <button
+                          onClick={() => handleDeleteImage(img.id)}
+                          className="absolute top-1.5 right-1.5 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-md hover:bg-red-600"
+                          title="Eliminar imagen"
+                        >
+                          <X size={11} />
+                        </button>
+                      </div>
+                      <input
+                        type="text"
+                        value={img.caption}
+                        placeholder="Agregar descripción…"
+                        onChange={e => handleCaptionChange(img.id, e.target.value)}
+                        onBlur={e => handleCaptionSave(img.id, e.target.value)}
+                        className="w-full mt-2 text-xs px-2.5 py-1.5 border border-slate-200 rounded-lg focus:outline-none focus:border-teal-400 transition-colors bg-slate-50 focus:bg-white"
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ╔═══════════════════════════════════════════════════════════════╗
+          ║  HOJA A4 — fuera de pantalla; visible al imprimir/exportar  ║
+          ╚═══════════════════════════════════════════════════════════════╝ */}
       <div
         ref={sheet1Ref}
-        className="a4-sheet bg-white shadow-lg print:shadow-none mx-auto my-6 print:my-0"
-        style={sheetStyle}
+        className="a4-sheet bg-white print:shadow-none"
+        style={a4OffScreenStyle}
       >
         <div className="flex justify-between items-start mb-5">
           <div className="flex items-start gap-4">
@@ -403,91 +610,13 @@ export default function ProformaClient({ id }: { id: string }) {
         </div>
       </div>
 
-      {/* ─── Panel gestión de imágenes (no-print) ─── */}
-      {showImagesPage && (
-        <div className="no-print mx-auto mb-6 bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden"
-          style={{ width: '794px' }}>
-          <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Images size={16} className="text-teal-500" />
-              <span className="text-sm font-semibold text-slate-700">Segunda hoja — galería de imágenes</span>
-            </div>
-            <span className="text-xs text-slate-400">{proformaImages.length} imagen{proformaImages.length !== 1 ? 'es' : ''}</span>
-          </div>
-
-          <div className="p-6">
-            {/* Drop zone */}
-            <div
-              onClick={() => fileInputRef.current?.click()}
-              onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
-              onDragLeave={() => setIsDragging(false)}
-              onDrop={e => { e.preventDefault(); setIsDragging(false); handleFileUpload(e.dataTransfer.files); }}
-              className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-all ${
-                isDragging ? 'border-teal-400 bg-teal-50' : 'border-slate-200 hover:border-teal-300 hover:bg-slate-50'
-              }`}
-            >
-              {uploading ? (
-                <div className="flex items-center justify-center gap-2 text-teal-600">
-                  <Loader2 size={18} className="animate-spin" />
-                  <span className="text-sm">Subiendo imágenes…</span>
-                </div>
-              ) : (
-                <>
-                  <Upload size={20} className="mx-auto text-slate-400 mb-2" />
-                  <p className="text-sm text-slate-500">Arrastra imágenes aquí o <span className="text-teal-600 font-medium">haz clic para seleccionar</span></p>
-                  <p className="text-xs text-slate-400 mt-1">PNG, JPG, JPEG, WEBP — puedes seleccionar varias</p>
-                </>
-              )}
-              <input
-                ref={fileInputRef}
-                type="file"
-                multiple
-                accept="image/png,image/jpeg,image/webp"
-                className="hidden"
-                onChange={e => e.target.files && handleFileUpload(e.target.files)}
-              />
-            </div>
-
-            {/* Thumbnails con captions */}
-            {proformaImages.length > 0 && (
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mt-5">
-                {proformaImages.map(img => (
-                  <div key={img.id} className="group relative">
-                    <div className="relative rounded-xl overflow-hidden bg-slate-100 aspect-video">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={img.url_path} alt={img.caption || ''} className="w-full h-full object-cover" />
-                      <button
-                        onClick={() => handleDeleteImage(img.id)}
-                        className="absolute top-1.5 right-1.5 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-md hover:bg-red-600"
-                        title="Eliminar imagen"
-                      >
-                        <X size={11} />
-                      </button>
-                    </div>
-                    <input
-                      type="text"
-                      value={img.caption}
-                      placeholder="Agregar descripción…"
-                      onChange={e => handleCaptionChange(img.id, e.target.value)}
-                      onBlur={e => handleCaptionSave(img.id, e.target.value)}
-                      className="w-full mt-2 text-xs px-2.5 py-1.5 border border-slate-200 rounded-lg focus:outline-none focus:border-teal-400 transition-colors bg-slate-50 focus:bg-white"
-                    />
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* ─── Hoja 2: Galería de imágenes ─── */}
+      {/* Hoja A4 #2 — Galería (también fuera de pantalla) */}
       {showImagesPage && proformaImages.length > 0 && (
         <div
           ref={sheet2Ref}
-          className="a4-sheet bg-white shadow-lg print:shadow-none mx-auto my-6 print:my-0 print-page-break"
-          style={sheetStyle}
+          className="a4-sheet bg-white print:shadow-none print-page-break"
+          style={a4OffScreenStyle}
         >
-          {/* Mismo header que hoja 1 */}
           <div className="flex justify-between items-start mb-5">
             <div className="flex items-start gap-4">
               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -515,18 +644,12 @@ export default function ProformaClient({ id }: { id: string }) {
             <div className="text-sm font-bold" style={{ color: '#0d9488' }}>GALERÍA DE PROYECTO</div>
           </div>
 
-          {/* Grid 2 columnas */}
           <div className="grid grid-cols-2 gap-5">
             {proformaImages.map(img => (
               <div key={img.id}>
                 <div className="w-full overflow-hidden rounded-lg" style={{ aspectRatio: '4/3' }}>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={img.url_path}
-                    alt={img.caption || 'Imagen de proyecto'}
-                    className="w-full h-full object-cover"
-                    crossOrigin="anonymous"
-                  />
+                  <img src={img.url_path} alt={img.caption || 'Imagen de proyecto'} className="w-full h-full object-cover" crossOrigin="anonymous" />
                 </div>
                 {img.caption && (
                   <p className="text-xs text-slate-500 text-center mt-2 italic leading-relaxed">{img.caption}</p>
@@ -539,13 +662,17 @@ export default function ProformaClient({ id }: { id: string }) {
 
       <style>{`
         @media print {
-          .no-print { display: none !important; }
+          .screen-only { display: none !important; }
           body { background: white !important; margin: 0; }
           * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
           .a4-sheet {
+            position: static !important;
+            left: 0 !important;
+            top: 0 !important;
             width: 210mm !important;
             min-height: 297mm !important;
             margin: 0 !important;
+            padding: 18mm 18mm 14mm !important;
             box-shadow: none !important;
           }
           .print-page-break { page-break-before: always !important; break-before: page !important; }
